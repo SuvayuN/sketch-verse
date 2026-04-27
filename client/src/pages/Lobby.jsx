@@ -17,6 +17,7 @@ const Lobby = () => {
     const [players, setPlayers] = useState([]);
     const [isCreator, setIsCreator] = useState(false);
     const [socketId, setSocketId] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
     const [copied, setCopied] = useState(false);
 
     // Effect to generate a new gameId if it's not provided in the URL
@@ -31,6 +32,36 @@ const Lobby = () => {
             window.history.replaceState({}, '', `?roomId=${newGameId}&username=${username}&avatar=${encodeURIComponent(avatar)}`);
         }
     }, [gameId, username, avatar]); // This effect runs only when gameId is initially undefined
+
+    useEffect(() => {
+        if (socket.connected) {
+            setIsConnected(true);
+        }
+
+        socket.on("connect", () => {
+            setIsConnected(true);
+        });
+
+        socket.on("disconnect", () => {
+            setIsConnected(false);
+        });
+
+        return () => {
+            socket.off("connect");
+            socket.off("disconnect");
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isConnected) return;
+
+        socket.emit('join-lobby', {
+            username,
+            avatar,
+            gameId
+        });
+
+    }, [isConnected, gameId, username, avatar]);
 
     // Effect to handle joining the lobby for both creator and players
     useEffect(() => {
@@ -47,9 +78,6 @@ const Lobby = () => {
             };
 
             socket.on('update-players', handleUpdatePlayers);
-
-            // Emit a 'join-lobby' event with player details to the server
-            socket.emit('join-lobby', { username, avatar, gameId });
 
             // Cleanup function to leave the lobby and remove listeners
             return () => {
@@ -95,6 +123,17 @@ const Lobby = () => {
     const createRoom = useCallback(() => {
         socket.emit('start-game', { gameId });
     }, [gameId]); // Callback dependency to ensure the values are up to date
+
+    if (!isConnected) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-lime-500"></div>
+                    <p className="text-lg">Connecting to server...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col items-center justify-center bg-gray-900 text-white p-4">
