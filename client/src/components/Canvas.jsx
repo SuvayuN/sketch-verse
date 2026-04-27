@@ -1,12 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import CanvasTool from './CanvasTool';
-import { io } from 'socket.io-client';
-import { useParams } from 'react-router-dom';
+import socket from '../socket';
 
-const socket = io('https://localhost:5000');
-
-const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode = false }) => {
-    const { roomId } = useParams();
+const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode = false, roomId, isDrawer }) => {
     const [isDrawing, setIsDrawing] = useState(false);
     const [penColor, setPenColor] = useState(darkMode ? 'white' : 'black');
     const [penWidth, setPenWidth] = useState(5);
@@ -31,18 +27,24 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
             const img = new Image();
             img.src = dataURL;
             img.onload = () => {
-                ctxRef.current.clearRect(0, 0, width, height);
+                ctxRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                 ctxRef.current.drawImage(img, 0, 0);
             };
         },
-        [width, height],
+        [],
     );
 
     useEffect(() => {
+        if (!roomId) return;
+
         const canvas = canvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = darkMode ? 'black' : 'white';
-        ctx.fillRect(0, 0, width, height);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctxRef.current = ctx;
@@ -55,6 +57,18 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
             drawLine(ctxRef.current, prevX, prevY, x, y);
         });
 
+        // Listen for existing canvas data when joining
+        socket.on('load-canvas', (drawings) => {
+            console.log('Loading canvas drawings:', drawings);
+            if (Array.isArray(drawings) && drawings.length > 0) {
+                drawings.forEach(({ x, y, prevX, prevY, color, width }) => {
+                    ctxRef.current.strokeStyle = color;
+                    ctxRef.current.lineWidth = width;
+                    drawLine(ctxRef.current, prevX, prevY, x, y);
+                });
+            }
+        });
+
         const savedHistory = JSON.parse(localStorage.getItem(`${localStorageId}History`)) || [];
         const savedStep = JSON.parse(localStorage.getItem(`${localStorageId}Step`)) || -1;
         setHistory(savedHistory);
@@ -62,7 +76,7 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
 
         socket.on('reset-canvas', () => {
             ctxRef.current.fillStyle = darkMode ? 'black' : 'white';
-            ctxRef.current.fillRect(0, 0, width, height);
+            ctxRef.current.fillRect(0, 0, canvas.width, canvas.height);
             setHistory([]);
             setStep(-1);
             localStorage.removeItem(`${localStorageId}History`);
@@ -75,44 +89,58 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
 
         return () => {
             socket.off('draw');
+            socket.off('reset-canvas');
+            socket.off('load-canvas');
         };
     }, [darkMode, width, height, roomId, localStorageId, restoreCanvas]);
 
-    const startDrawing = e => {
-        const { offsetX, offsetY } = e.nativeEvent;
+    const startDrawing = (e) => {
+        const rect = canvasRef.current.getBoundingClientRect();
+
+        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+
         ctxRef.current.beginPath();
-        ctxRef.current.moveTo(offsetX, offsetY);
+        ctxRef.current.moveTo(x, y);
+
         setIsDrawing(true);
-        lastX.current = offsetX;
-        lastY.current = offsetY;
+        lastX.current = x;
+        lastY.current = y;
     };
 
-    const draw = e => {
-        if (!isDrawing) return;
-        const { offsetX, offsetY } = e.nativeEvent;
+    const draw = (e) => {
+        if (!isDrawing || !isDrawer) return;
+
+        if (e.cancelable) e.preventDefault();
+
+        const rect = canvasRef.current.getBoundingClientRect();
+
+        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+
         const ctx = ctxRef.current;
 
-        ctx.strokeStyle = tool === 'eraser' ? (darkMode ? '#000000' : '#FFFFFF') : penColor;
-        ctx.lineWidth = tool === 'eraser' ? 20 : penWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        ctx.strokeStyle = tool === 'eraser'
+            ? (darkMode ? '#000000' : '#FFFFFF')
+            : penColor;
 
-        drawLine(ctx, lastX.current, lastY.current, offsetX, offsetY);
+        ctx.lineWidth = tool === 'eraser' ? 20 : penWidth;
+
+        drawLine(ctx, lastX.current, lastY.current, x, y);
 
         socket.emit('draw', {
             roomId,
-            x: offsetX,
-            y: offsetY,
+            x,
+            y,
             prevX: lastX.current,
             prevY: lastY.current,
             color: ctx.strokeStyle,
             width: ctx.lineWidth,
         });
 
-        lastX.current = offsetX;
-        lastY.current = offsetY;
+        lastX.current = x;
+        lastY.current = y;
     };
-
     const stopDrawing = () => {
         if (!isDrawing) return;
         ctxRef.current.closePath();
@@ -145,16 +173,14 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
     const resetCanvas = () => {
         // Clear the canvas
         ctxRef.current.fillStyle = darkMode ? 'black' : 'white';
-        ctxRef.current.fillRect(0, 0, width, height);
+        ctxRef.current.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
         // Remove drawing history
         setHistory([]);
         setStep(-1);
 
-        // Emit reset-canvas event to all connected clients
-        socket.emit('reset-canvas', {
-            roomId,
-        });
+        // Emit clear-canvas event to all connected clients
+        socket.emit('clear-canvas', roomId);
 
         // Remove local storage history
         localStorage.removeItem(`${localStorageId}History`);
@@ -164,7 +190,7 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
     return (
         <div className={` ${className} flex flex-col justify-center items-center`}>
             <CanvasTool
-                className="absolute top-0 z-5"
+                className="mb-2 z-5"
                 tool={tool}
                 setTool={setTool}
                 penColor={penColor}
@@ -176,14 +202,15 @@ const Canvas = ({ className, localStorageId, width = 800, height = 500, darkMode
                 resetCanvas={resetCanvas}
             />
             <canvas
-                className={`${className} border shadow-lg`}
                 ref={canvasRef}
-                width={width}
-                height={height}
-                onMouseDown={startDrawing}
+                className={`w-full h-full border shadow-lg bg-white ${isDrawer ? "cursor-crosshair" : "cursor-not-allowed"}`}
+                onMouseDown={isDrawer ? startDrawing : null}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
-                onMouseOut={stopDrawing}></canvas>
+                onMouseOut={stopDrawing}
+                onTouchStart={isDrawer ? startDrawing : null}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}></canvas>
         </div>
     );
 };

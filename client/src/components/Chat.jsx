@@ -1,12 +1,22 @@
-import { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
+import { useState, useEffect, useRef } from 'react';
+import socket from '../socket';
 
-// Initialize socket connection
-const socket = io("https://sketch-verse.onrender.com", { transports: ["websocket"] }); // Ensure websocket transport
-
-const Chat = ({ roomId, username }) => {
+const Chat = ({ roomId, username, isDrawer }) => {
+    const inputRef = useRef(null);
     const [messages, setMessages] = useState([]); // Store messages
-    const [input, setInput] = useState(''); // Store user input
+    const [input, setInput] = useState('');
+
+    useEffect(() => {
+        if (!isDrawer && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [isDrawer]);
+
+    useEffect(() => {
+        if (!isDrawer && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [isDrawer]);
 
     useEffect(() => {
         if (!roomId) {
@@ -35,39 +45,68 @@ const Chat = ({ roomId, username }) => {
         };
     }, [roomId]); // Ensure effect runs when `roomId` changes
 
+    useEffect(() => {
+        const chat = document.getElementById("chat-container");
+        if (chat) chat.scrollTop = chat.scrollHeight;
+    }, [messages]);
+
     const sendMessage = () => {
-        if (!input.trim()) {
-            console.warn('Cannot send an empty message');
-            return;
-        }
+        if (!input.trim() || isDrawer) return;
 
-        const messageData = { message: input.trim(), sender: username, roomId };
+        socket.emit('send-message', {
+            roomId,
+            message: input.trim(),
+            sender: username
+        });
+        // }
 
-        console.log('Sending message:', messageData);
-
-        socket.emit('send-message', messageData); // Send to server
-        setInput(''); // Clear input after sending
+        setInput('');
     };
 
     return (
         <div className="fixed bottom-0 right-0 w-[20%] h-full bg-gray-900 text-white flex flex-col rounded-t-lg shadow-lg">
             {/* Chat messages */}
             <div className="flex-1 overflow-auto p-2 space-y-2">
-                {messages.length === 0 ? (
-                    <p className="text-gray-400 text-center">No messages yet</p>
-                ) : (
-                    messages.map((msg, index) => (
-                        <div key={index} className="p-2 rounded-lg bg-gray-700">
-                            <strong>{msg.sender}:</strong> {msg.text}
-                        </div>
-                    ))
+                {isDrawer && (
+                    <div className="text-center text-yellow-400 text-sm">
+                        You are drawing. Chat disabled.
+                    </div>
                 )}
+                {messages.map((msg, index) => (
+                    <div
+                        key={index}
+                        className={`p-2 rounded-lg ${msg.sender === 'SYSTEM'
+                            ? 'bg-green-600 text-center font-bold'
+                            : 'bg-gray-700'
+                            }`}
+                    >
+                        <strong>{msg.sender}:</strong> {msg.text}
+                    </div>
+                ))}
             </div>
 
             {/* Input box & send button */}
             <div className="flex p-2 bg-gray-800">
-                <input type="text" placeholder="Type a message..." value={input} onChange={e => setInput(e.target.value)} className="p-2 text-black rounded-lg flex-1" />
-                <button onClick={sendMessage} type="submit" className="bg-blue-500 p-2 rounded-lg ml-2">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder={isDrawer ? "You are drawing..." : "Type a message..."}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    disabled={isDrawer}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                            e.preventDefault(); // prevents newline / form submit
+                            sendMessage();
+                        }
+                    }}
+                    className="p-2 text-black rounded-lg flex-1 disabled:opacity-50"
+                />
+                <button
+                    onClick={sendMessage}
+                    disabled={isDrawer}
+                    className="bg-blue-500 p-2 rounded-lg ml-2 disabled:bg-gray-500"
+                >
                     Send
                 </button>
             </div>

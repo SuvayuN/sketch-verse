@@ -13,7 +13,7 @@ export default function GameCard(props) {
                         {props.userName === '' ? 'player456' : props.userName}
                     </div>
                     <div id="userPoints" className="font-bold text-lime-500">
-                        Points: {props.usersPoints}
+                        {props.usersPoints !== undefined ? `Points: ${props.usersPoints}` : ''}
                     </div>
                 </div>
             </div>
@@ -27,5 +27,5 @@ GameCard.propTypes = {
     photoWidth: PropTypes.number.isRequired,
     photoHeight: PropTypes.number.isRequired,
     userName: PropTypes.string.isRequired,
-    usersPoints: PropTypes.number.isRequired,
+    usersPoints: PropTypes.number,
 };
