@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -38,22 +38,22 @@ export default function Game() {
     const navigate = useNavigate();
 
     // Memoized function to handle creating a room
-    const createRoom = useCallback(() => {
+    const createRoom = () => {
         if (!username.trim()) {
             alert('Please enter a username!');
             return;
         }
         navigate(`/lobby?roomId=&username=${username}&avatar=${encodeURIComponent(avatar)}`);
-    });
+    };
 
     // Memoized function to handle joining a game
-    const joinGame = useCallback(() => {
+    const joinGame = () => {
         if (!gameId.trim()) {
             alert('Please enter a game ID!');
             return;
         }
         navigate(`/lobby?roomId=${gameId}&username=${username}&avatar=${encodeURIComponent(avatar)}`);
-    });
+    };
 
     // Function to handle selecting an avatar
     const selectAvatar = index => {
