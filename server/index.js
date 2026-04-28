@@ -179,14 +179,6 @@ io.on("connection", (socket) => {
 
         io.to(gameId).emit('timer', timeLeft);
 
-        if (timeLeft % 10 === 0) {
-            const revealCount = Math.floor((60 - timeLeft) / 10);
-
-            io.to(gameId).emit("update-word", {
-                maskedWord: maskWord(game.word, revealCount)
-            });
-        }
-
         game.timer = setInterval(() => {
             timeLeft--;
 
@@ -220,34 +212,23 @@ io.on("connection", (socket) => {
 
         console.log(`🎯 Round ${game.round} | Word: ${word}`);
 
+        // send round info
         io.to(gameId).emit('game-started', {
             drawer,
-            maskedWord: maskWord(word, 0),
+            wordLength: word.length,
             round: game.round
         });
 
+        // ✅ send word ONLY ONCE
+        io.to(drawer).emit("your-word", word);
+
+        // system message
         io.to(gameId).emit("receive-message", {
             sender: "SYSTEM",
             text: "🎨 New round started!"
         });
 
-        io.to(drawer).emit('your-word', word);
-
         startTimer(gameId);
-    }
-
-    function maskWord(word, revealCount = 0) {
-        const letters = word.split('');
-        const revealedIndexes = [];
-
-        while (revealedIndexes.length < revealCount) {
-            const i = Math.floor(Math.random() * letters.length);
-            if (!revealedIndexes.includes(i)) revealedIndexes.push(i);
-        }
-
-        return letters
-            .map((l, i) => (revealedIndexes.includes(i) ? l : "_"))
-            .join(" ");
     }
 
     socket.on('start-game', ({ gameId }) => {

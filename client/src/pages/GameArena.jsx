@@ -35,16 +35,6 @@ const GameArina = () => {
     }, []);
 
     useEffect(() => {
-        socket.on("update-word", ({ maskedWord }) => {
-            if (!isDrawer) {
-                setWord(maskedWord);
-            }
-        });
-
-        return () => socket.off("update-word");
-    }, [isDrawer]);
-
-    useEffect(() => {
         socket.on("update-players", ({ creator }) => {
             setCreator(creator);
         });
@@ -72,12 +62,14 @@ const GameArina = () => {
         if (!socketId) return;
 
         const handleGameStart = ({ drawer, wordLength, round }) => {
-            console.log("MY SOCKET:", socketId);
-            console.log("DRAWER:", drawer);
-
             setCurrentDrawer(drawer);
             setIsDrawer(socketId === drawer);
-            setWord("_ ".repeat(wordLength));
+
+            // 👇 show blanks for guessers
+            if (socketId !== drawer) {
+                setWord("_ ".repeat(wordLength));
+            }
+
             setRound(round);
         };
 
