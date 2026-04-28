@@ -126,7 +126,7 @@ const Lobby = () => {
 
     if (!isConnected) {
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
+            <div className="flex items-center justify-center h-screen text-white">
                 <div className="flex flex-col items-center gap-4">
                     <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-lime-500"></div>
                     <p className="text-lg">Connecting to server...</p>
